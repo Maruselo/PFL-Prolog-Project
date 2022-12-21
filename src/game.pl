@@ -1,3 +1,7 @@
+:- use_module(library(between)).
+:- use_module(library(lists)).
+
+/*
 % initial_board(+RowNumber, -Row)
 initial_board(0, [blank, blank, tent1, head1, head1, tent1, blank, blank]).
 initial_board(1, [blank, blank, tent1, head1, head1, tent1, blank, blank]).
@@ -8,11 +12,6 @@ initial_board(5, [blank, blank, tent2, tent2, tent2, tent2, blank, blank]).
 initial_board(6, [blank, blank, tent2, head2, head2, tent2, blank, blank]).
 initial_board(7, [blank, blank, tent2, head2, head2, tent2, blank, blank]).
 
-% menu_option(+OptionNumber, -Option)
-menu_option(1, play).
-menu_option(2, instructions).
-menu_option(3, quit).
-
 % initial_state(-GameState-Player)
 initial_state(GameState-Player) :- 
     initial_state(7, GameState),
@@ -20,6 +19,7 @@ initial_state(GameState-Player) :-
 
 
 % initial_state(+Size, -GameState)
+
 initial_state(Size, [Row]) :-
     Size = 0,
     initial_board(0, Row), !.
@@ -29,6 +29,56 @@ initial_state(Size, [Row|GameState]) :-
     NSize is Size-1,
     initial_state(NSize, GameState),
     initial_board(Size, Row).
+*/
+
+%cell(Row, Col, Piece).
+% initial_state_(+Row, +Col, +Size, -Board)
+initial_state_(Size, 0, Size, []) :- !.
+initial_state_(Row, Size, Size, Board) :-
+    NextRow is Row + 1,
+    initial_state_(NextRow, 0, Size, Board).
+
+initial_state_(Row, Col, Size, [Cell|Board]) :-
+    (between(0, 1, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
+    Row is 2, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
+    Cell = cell(Row, Col, t-1), !,
+    NextCol is Col + 1,
+    initial_state_(Row, NextCol, Size, Board).
+
+initial_state_(Row, Col, Size, [Cell|Board]) :-
+    (Lower is Size - 2, Upper is Size - 1, between(Lower, Upper, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
+    Row is Size - 3, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
+    Cell = cell(Row, Col, t-2), !,
+    NextCol is Col + 1,
+    initial_state_(Row, NextCol, Size, Board).
+
+initial_state_(Row, Col, Size, [Cell|Board]) :-
+    (Row is 0; Row is 1), (Col is Size // 2; Col is Size // 2 - 1),
+    Cell = cell(Row, Col, h-1), !,
+    NextCol is Col + 1,
+    initial_state_(Row, NextCol, Size, Board).
+
+initial_state_(Row, Col, Size, [Cell|Board]) :-
+    (Row is Size - 1; Row is Size - 2), (Col is Size // 2; Col is Size // 2 - 1),
+    Cell = cell(Row, Col, h-2), !,
+    NextCol is Col + 1,
+    initial_state_(Row, NextCol, Size, Board).
+
+initial_state_(Row, Col, Size, [Cell|Board]) :-
+    Cell = cell(Row, Col, empty),
+    NextCol is Col + 1,
+    initial_state_(Row, NextCol, Size, Board).
+
+% initial_state(+Size, -GameState)
+initial_state(Size, GameState) :-
+    initial_state_(0, 0, Size, ListOfCells),
+    GameState = [board-ListOfCells, turnPlayer-1, size-Size].
+
+
+% menu_option(+OptionNumber, -Option)
+menu_option(1, play).
+menu_option(2, instructions).
+menu_option(3, quit).
 
 % display_game(+GameState-Player)
 display_game(GameState-Player) :-
@@ -43,6 +93,180 @@ display_game(GameState-Player) :-
     ),
     format('Next to move is: ~a.~n', [Player]).
 
+% move(+GameState, +Move, -NewGameState)
+/*
+ Move = [Piece, AtRow, AtCol, ToRow, ToCol]
+        [t, 1, 1, 2, 3]
+        [h, _, _, 4, 5] - ToRow, ToCol are head's topleft coordinates
+
+- Test query
+initial_state(8, [board-L, _]), !, setof(Col, New^select(cell(0, Col, h-1), L, New), Cols).
+- Find if any of player 1's head pieces are in row 0
+setof(Col, New^select(cell(0, Col, h-1), L, New), Cols).
+*/
+% direction(+Direction, -RowInc, -ColInc)
+direction(top).
+direction(bottom).
+direction(left).
+direction(right).
+direction(topleft).
+direction(topright).
+direction(bottomleft).
+direction(bottomright).
+
+%
+%direction_pieces(_Board, Row, Col, Size, _Player, _Dir) :- (Row =< 0 ; Col =< 0 ; Row >= Size - 1 ; Col >= Size - 1), !, fail.
+direction_pieces(Board, Row, Col, Size, Player, top) :-
+    NextRow is Row + 1,
+    NextRow < Size,
+    select(cell(NextRow, Col, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, Col, Size, Player, top)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, bottom) :-
+    NextRow is Row - 1,
+    NextRow >= 0,
+    select(cell(NextRow, Col, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, Col, Size, Player, bottom)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, left) :-
+    NextCol is Col - 1,
+    NextCol >= 0,
+    select(cell(Row, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, Row, NextCol, Size, Player, left)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, right) :-
+    NextCol is Col + 1,
+    NextCol < Size,
+    select(cell(Row, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, Row, NextCol, Size, Player, right)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, topleft) :-
+    NextCol is Col - 1,
+    NextRow is Row + 1,
+    NextCol >= 0,
+    NextRow < Size,
+    select(cell(NextRow, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, topleft)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, topright) :-
+    NextCol is Col + 1,
+    NextRow is Row + 1,
+    NextCol < Size,
+    NextRow < Size,
+    select(cell(NextRow, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, topright)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, bottomleft) :-
+    NextCol is Col - 1,
+    NextRow is Row - 1,
+    NextCol >= 0,
+    NextRow >= 0,
+    select(cell(NextRow, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, bottomleft)
+      )
+    ).
+
+direction_pieces(Board, Row, Col, Size, Player, bottomright) :-
+    NextCol is Col + 1,
+    NextRow is Row - 1,
+    NextCol < Size,
+    NextRow >= 0,
+    select(cell(NextRow, NextCol, Piece), Board, _Res),
+    ((Piece = h-Player) 
+    -> ! 
+    ; ((Piece = t-_Player)
+        -> !, fail 
+        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, bottomright)
+      )
+    ).
+
+line_of_sight(Board, Row, Col, Size, Player) :-
+    setof(Dir, (direction(Dir), direction_pieces(Board, Row, Col, Size, Player, Dir)), _Dirs).
+
+move(GameState, [t, AtRow, AtCol, ToRow, ToCol], NewGameState) :-
+    GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
+
+    % check if head is in line of sight
+    %   check each direction
+    %       change to new direction if tentacle is found or all cells are empty
+    %       succeed if head is found in any direction
+    ((line_of_sight(ListOfCells, AtRow, AtCol, Size, Player))
+        -> write('Moved') 
+        ; write('Invalid move: head isn\'t in sight'), fail
+    ),
+
+    % check if no jumping is being performed
+    %   check in the direction of the move if there is no piece in the way
+
+    select(cell(AtRow, AtCol, t-Player), ListOfCells, cell(AtRow, AtCol, empty), TempListOfCells),
+    select(cell(ToRow, ToCol, empty), TempListOfCells, cell(ToRow, ToCol, t-Player), NewListOfCells),
+
+    NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
+
+move(GameState, [h, AtTopLeftRow, AtTopLeftCol, ToTopLeftRow, ToTopLeftCol], NewGameState) :-
+    GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
+
+    % Calculate coordinates of the head pieces, current (At) and target (To)
+    AtTopRightRow is AtTopLeftRow, AtTopRightCol is AtTopLeftCol+1,
+    AtBottomLeftRow is AtTopLeftRow - 1, AtBottomLeftCol is AtTopLeftCol,
+    AtBottomRightRow is AtTopLeftRow - 1, AtBottomRightCol is AtTopLeftCol + 1,
+    ToTopRightRow is ToTopLeftRow, ToTopRightCol is ToTopLeftCol+1,
+    ToBottomLeftRow is ToTopLeftRow - 1, ToBottomLeftCol is ToTopLeftCol,
+    ToBottomRightRow is ToTopLeftRow - 1, ToBottomRightCol is ToTopLeftCol + 1,
+
+    % Replace current head pieces with empty cells
+    select(cell(AtTopLeftRow, AtTopLeftCol, h-Player), ListOfCells, cell(AtTopLeftRow, AtTopLeftCol, empty), TempListOfCells1),
+    select(cell(AtTopRightRow, AtTopRightCol, h-Player), TempListOfCells1, cell(AtTopRightRow, AtTopRightCol, empty), TempListOfCells2),
+    select(cell(AtBottomLeftRow, AtBottomLeftCol, h-Player), TempListOfCells2, cell(AtBottomLeftRow, AtBottomLeftCol, empty), TempListOfCells3),
+    select(cell(AtBottomRightRow, AtBottomRightCol, h-Player), TempListOfCells3, cell(AtBottomRightRow, AtBottomRightCol, empty), TempListOfCells4),
+
+    % Replace target empty cells with head pieces
+    select(cell(ToTopLeftRow, ToTopLeftCol, empty), TempListOfCells4, cell(ToTopLeftRow, ToTopLeftCol, h-Player), TempListOfCells5),
+    select(cell(ToTopRightRow, ToTopRightCol, empty), TempListOfCells5, cell(ToTopRightRow, ToTopRightCol, h-Player), TempListOfCells6),
+    select(cell(ToBottomLeftRow, ToBottomLeftCol, empty), TempListOfCells6, cell(ToBottomLeftRow, ToBottomLeftCol, h-Player), TempListOfCells7),
+    select(cell(ToBottomRightRow, ToBottomRightCol, empty), TempListOfCells7, cell(ToBottomRightRow, ToBottomRightCol, h-Player), NewListOfCells),
+    
+    NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
 
 valid_moves(GameState, Player, ListOfMoves) :-
     findall(Move, move(GameState, Move, NewState), ListOfMoves).
@@ -52,21 +276,21 @@ choose_move(GameState, Player, Level, Move) :-
 
 value(GameState, Player, Value).
   
-game_cycle(GameState-Player) :-
+gameloop(GameState) :-
     game_over(GameState, Winner), !,
     congratulate(Winner).
 
-game_cycle(GameState-Player) :-
+gameloop(GameState) :-
     choose_move(GameState, Player, Move),
     move(GameState, Move, NewGameState),
     next_player(Player, NextPlayer),
-    display_game(GameState-NextPlayer), !,
-    game_cycle(NewGameState-NextPlayer).
+    display_game(GameState), !,
+    gameloop(NewGameState).
 
 play :-
-    initial_state(GameState-Player),
-    display_game(GameState-Player).
-    %game_cycle(GameState-Player).
+    initial_state(Size, GameState),
+    display_game(GameState).
+    gameloop(GameState).
 
 instructions :-
     write('Tako Judo - the timeless sport of octopus wrestling - is'), nl,
@@ -108,4 +332,5 @@ write_menu_list :-
     menu_option(N, Name),
     write(N), write('. '), write(Name), nl,
     fail.
+    
 write_menu_list.
