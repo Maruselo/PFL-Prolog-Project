@@ -99,17 +99,6 @@ display_game(GameState-Player) :-
     ),
     format('Next to move is: ~a.~n', [Player]).
 
-% move(+GameState, +Move, -NewGameState)
-/*
- Move = [Piece, AtRow, AtCol, ToRow, ToCol]
-        [t, 1, 1, 2, 3]
-        [h, _, _, 4, 5] - ToRow, ToCol are head's topleft coordinates
-
-- Test query
-initial_state(8, [board-L, _]), !, setof(Col, New^select(cell(0, Col, h-1), L, New), Cols).
-- Find if any of player 1's head pieces are in row 0
-setof(Col, New^select(cell(0, Col, h-1), L, New), Cols).
-*/
 % direction(Direction, RowInc, ColInc)
 direction(top, 1, 0).
 direction(bottom, -1, 0).
@@ -120,100 +109,106 @@ direction(topright, 1, 1).
 direction(bottomleft,-1, -1).
 direction(bottomright, -1, 1).
 
-direction_pieces_(Board, Row, Col, _Player, 0) :- select(cell(Row, Col, t-_P), Board, _Res).
-direction_pieces_(Board, Row, Col, Player, 1) :- select(cell(Row, Col, h-Player), Board, _Res).
+direction_pieces_(Board, Row-Col, _Player, 0) :- memberchk(cell(Row, Col, t-_P), Board).
+direction_pieces_(Board, Row-Col, Player, 1) :- memberchk(cell(Row, Col, h-Player), Board).
 
-direction_pieces(_Board, Size, _Col, Size, _Player, _Dir, 0).
-direction_pieces(_Board, _Row, Size, Size, _Player, _Dir, 0).
-direction_pieces(_Board, Row, Col, _Size, _Player, _Dir, 0) :- Row < 0 ; Col < 0.
+direction_pieces(_Board, Size-_Col, Size, _Player, _Dir, 0).
+direction_pieces(_Board, _Row-Size, Size, _Player, _Dir, 0).
+direction_pieces(_Board, Row-Col, _Size, _Player, _Dir, 0) :- Row < 0 ; Col < 0.
 
-direction_pieces(Board, Row, Col, _Size, Player, Dir, HeadFlag) :- !,
+direction_pieces(Board, Row-Col, _Size, Player, Dir, HeadFlag) :- !,
     direction(Dir, RowInc, ColInc),
     NextRow is Row + RowInc, NextCol is Col + ColInc, 
-    direction_pieces_(Board, NextRow, NextCol, Player, HeadFlag).
+    direction_pieces_(Board, NextRow-NextCol, Player, HeadFlag).
 
-direction_pieces(Board, Row, Col, Size, Player, Dir, HeadFlag) :-
+direction_pieces(Board, Row-Col, Size, Player, Dir, HeadFlag) :-
     direction(Dir, RowInc, ColInc),
     NextRow is Row + RowInc, NextCol is Col + ColInc, 
-    \+ direction_pieces_(Board, NextRow, NextCol, Player, HeadFlag),
-    direction_pieces(Board, NextRow, NextCol, Size, Player, Dir, HeadFlag).
+    \+ direction_pieces_(Board, NextRow-NextCol, Player, HeadFlag),
+    direction_pieces(Board, NextRow-NextCol, Size, Player, Dir, HeadFlag).
 
-line_of_sight(Board, Row, Col, Size, Player) :-
-    setof(HeadFlag, Dir^RowInc^ColInc^(direction(Dir, RowInc, ColInc), direction_pieces(Board, Row, Col, Size, Player, Dir, HeadFlag), HeadFlag = 1), _Flags).
-
-get_avaliable_cells_(Board, Row, Col, cell(Row, Col, empty)) :-
-    select(cell(Row, Col, empty), Board, _Res).
-
-get_avaliable_cells(_Board, Size, _Col, Size, _Dir, []).
-get_avaliable_cells(_Board, _Row, Size, Size, _Dir, []).
-get_avaliable_cells(_Board, Row, Col, _Size, _Dir, []) :- Row < 0 ; Col < 0.
-get_avaliable_cells(Board, Row, Col, _Size, Dir, []) :-
-    direction(Dir, RowInc, ColInc),
-    NextRow is Row + RowInc, NextCol is Col + ColInc,
-    \+ get_avaliable_cells_(Board, NextRow, NextCol, _Cell).
-
-get_avaliable_cells(Board, Row, Col, Size, Dir, [Cell|Cells]) :-
-    direction(Dir, RowInc, ColInc),
-    NextRow is Row + RowInc, NextCol is Col + ColInc,
-    get_avaliable_cells_(Board, NextRow, NextCol, Cell),
-    get_avaliable_cells(Board, NextRow, NextCol, Size, Dir, Cells).
-
-avaliable_cells(Board, Row, Col, Size, ListOfCells) :-
-    findall(Cells, (get_avaliable_cells(Board, Row, Col, Size, _Dir, Cells)), ListOfListsCells),
-    mergelists(ListOfListsCells, ListOfCells).
-
-move(GameState, [t, AtRow, AtCol, ToRow, ToCol], NewGameState) :-
-    GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
-
-    % check if head is in line of sight
+% check if head is in line of sight
     %   check each direction
     %       change to new direction if tentacle is found or all cells are empty
     %       succeed if head is found in any direction
-    ((line_of_sight(ListOfCells, AtRow, AtCol, Size, Player))
-        -> write('Moved') 
-        ; write('Invalid move: head isn\'t in sight'), fail
-    ),
+line_of_sight(Board, Row-Col, Size, Player) :-
+    setof(HeadFlag, Dir^(direction_pieces(Board, Row-Col, Size, Player, Dir, HeadFlag), HeadFlag = 1), _Flags).
 
-    % check if no jumping is being performed
-    %   check in the direction of the move if there is no piece in the way
-    avaliable_cells(ListOfCells, AtRow, AtCol, Size, AvailCells),
-    ((memberchk(cell(ToRow, ToCol, empty), AvailCells))
-        -> write('Moved') 
-        ; write('Invalid move: target cell isn\'t in reach'), fail
-    ),
+increment_coordinates(Coords, RowInc, ColInc, NewCoords) :-
+    (foreach(Row-Col, Coords),
+        foreach(NextRow-NextCol, NewCoords), param(RowInc, ColInc) do
+            NextRow is Row + RowInc, NextCol is Col + ColInc
+    ).
 
-    select(cell(AtRow, AtCol, t-Player), ListOfCells, cell(AtRow, AtCol, empty), TempListOfCells),
-    select(cell(ToRow, ToCol, empty), TempListOfCells, cell(ToRow, ToCol, t-Player), NewListOfCells),
+get_avaliable_cells_(Board, Coords, Cells) :-
+    (foreach(Row-Col, Coords),
+        foreach(Cell, Cells), param(Board) do
+            memberchk(cell(Row, Col, empty), Board),
+            Cell = cell(Row, Col, empty)
+    ).
 
-    NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
+get_avaliable_cells(_Board, Coords, Size, _Dir, []) :-
+    (foreach(Row-Col, Coords), param(Size) do Row < 0 ; Row >= Size ; Col < 0 ; Col >= Size).
+
+get_avaliable_cells(Board, Coords, _Size, Dir, []) :-
+    direction(Dir, RowInc, ColInc),
+    increment_coordinates(Coords, RowInc, ColInc, NewCoords),
+    \+ get_avaliable_cells_(Board, NewCoords, _Cells).
+
+get_avaliable_cells(Board, Coords, Size, Dir, [Cells|T]) :-
+    direction(Dir, RowInc, ColInc),
+    increment_coordinates(Coords, RowInc, ColInc, NewCoords),
+    get_avaliable_cells_(Board, NewCoords, Cells),
+    get_avaliable_cells(Board, NewCoords, Size, Dir, T).
+
+avaliable_cells(Board, Coords, Size, ListOfCells) :-
+    findall(Cells, (get_avaliable_cells(Board, Coords, Size, _Dir, CellList), mergelists(CellList, Cells)), ListOfListsCells),
+    mergelists(ListOfListsCells, ListOfCells).
+
+replace(NewBoard, _Piece, [], NewBoard).
+replace(Board, Piece, [Row-Col|Coords], NewBoard) :-
+    select(cell(Row, Col, Piece), Board, cell(Row, Col, empty), TempBoard),
+    replace(TempBoard, Piece, Coords, NewBoard).
+
+place(NewBoard, _Piece, [], NewBoard).
+place(Board, Piece, [Row-Col|Coords], NewBoard) :-
+    select(cell(Row, Col, empty), Board, cell(Row, Col, Piece), TempBoard),
+    place(TempBoard, Piece, Coords, NewBoard).
+
+% move(+GameState, +Move, -NewGameState)
 /*
-move(GameState, [h, AtTopLeftRow, AtTopLeftCol, ToTopLeftRow, ToTopLeftCol], NewGameState) :-
-    GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
-
-    % Calculate coordinates of the head pieces, current (At) and target (To)
-    AtTopRightRow is AtTopLeftRow, AtTopRightCol is AtTopLeftCol+1,
-    AtBottomLeftRow is AtTopLeftRow - 1, AtBottomLeftCol is AtTopLeftCol,
-    AtBottomRightRow is AtTopLeftRow - 1, AtBottomRightCol is AtTopLeftCol + 1,
-    ToTopRightRow is ToTopLeftRow, ToTopRightCol is ToTopLeftCol+1,
-    ToBottomLeftRow is ToTopLeftRow - 1, ToBottomLeftCol is ToTopLeftCol,
-    ToBottomRightRow is ToTopLeftRow - 1, ToBottomRightCol is ToTopLeftCol + 1,
-
-    % Replace current head pieces with empty cells
-    select(cell(AtTopLeftRow, AtTopLeftCol, h-Player), ListOfCells, cell(AtTopLeftRow, AtTopLeftCol, empty), TempListOfCells1),
-    select(cell(AtTopRightRow, AtTopRightCol, h-Player), TempListOfCells1, cell(AtTopRightRow, AtTopRightCol, empty), TempListOfCells2),
-    select(cell(AtBottomLeftRow, AtBottomLeftCol, h-Player), TempListOfCells2, cell(AtBottomLeftRow, AtBottomLeftCol, empty), TempListOfCells3),
-    select(cell(AtBottomRightRow, AtBottomRightCol, h-Player), TempListOfCells3, cell(AtBottomRightRow, AtBottomRightCol, empty), TempListOfCells4),
-
-    % Replace target empty cells with head pieces
-    select(cell(ToTopLeftRow, ToTopLeftCol, empty), TempListOfCells4, cell(ToTopLeftRow, ToTopLeftCol, h-Player), TempListOfCells5),
-    select(cell(ToTopRightRow, ToTopRightCol, empty), TempListOfCells5, cell(ToTopRightRow, ToTopRightCol, h-Player), TempListOfCells6),
-    select(cell(ToBottomLeftRow, ToBottomLeftCol, empty), TempListOfCells6, cell(ToBottomLeftRow, ToBottomLeftCol, h-Player), TempListOfCells7),
-    select(cell(ToBottomRightRow, ToBottomRightCol, empty), TempListOfCells7, cell(ToBottomRightRow, ToBottomRightCol, h-Player), NewListOfCells),
-    
-    NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
+ Move = [Piece, FromCoords, ToCoords]
+        [t, [1-1], [2-3]]
+        [h, [1-2,1-3,2-2,2-3], [2-2,2-3,2-4,2-5]] 
 */
+move(GameState, Move, NewGameState) :-
+    GameState = [board-Board, turnPlayer-Player, size-Size],
+    Move = [Piece, FromCoords, ToCoords],
+
+    % Replace current pieces with empty cells
+    replace(Board, Piece-Player, FromCoords, TempBoard),
+
+    % Place pieces in target empty cells
+    place(TempBoard, Piece-Player, ToCoords, NewBoard),
+
+    NewGameState = [board-NewBoard, turnPlayer-Player, size-Size].
+
 valid_moves(GameState, Player, ListOfMoves) :-
-    findall(Move, move(GameState, Move, NewState), ListOfMoves).
+    GameState = [board-Board, _turnPlayer, size-Size],
+    findall([AtRow-AtCol, AvailCells], 
+        (select(cell(AtRow, AtCol, t-Player), Board, _Res), 
+            line_of_sight(Board, AtRow-AtCol, Size, Player),
+            avaliable_cells(Board, [AtRow-AtCol], Size, AvailCells)
+        ),
+        TentacleMoves
+    ),
+    findall([HeadCoords, AvailCells], 
+        (findall(Row-Col, select(cell(Row, Col, h-Player), Board, _Res), HeadCoords),
+            avaliable_cells(Board, HeadCoords, Size, AvailCells)
+        ),
+        HeadMoves
+    ),
+    append([t-TentacleMoves], [h-HeadMoves], ListOfMoves).
 
 choose_move(GameState, Player, Level, Move) :-
     true.
