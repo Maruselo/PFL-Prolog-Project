@@ -1,6 +1,12 @@
 :- use_module(library(between)).
 :- use_module(library(lists)).
 
+% mergelists(+ListOfLists, ?List)
+mergelists([], []).
+mergelists([H|T], List) :-
+    append(H, List1, List),
+    mergelists(T, List1).
+
 /*
 % initial_board(+RowNumber, -Row)
 initial_board(0, [blank, blank, tent1, head1, head1, tent1, blank, blank]).
@@ -104,15 +110,15 @@ initial_state(8, [board-L, _]), !, setof(Col, New^select(cell(0, Col, h-1), L, N
 - Find if any of player 1's head pieces are in row 0
 setof(Col, New^select(cell(0, Col, h-1), L, New), Cols).
 */
-% direction(+Direction, -RowInc, -ColInc)
-direction(top).
-direction(bottom).
-direction(left).
-direction(right).
-direction(topleft).
-direction(topright).
-direction(bottomleft).
-direction(bottomright).
+% direction(Direction, RowInc, ColInc)
+direction(top, 1, 0).
+direction(bottom, -1, 0).
+direction(left, 0, -1).
+direction(right, 0, 1).
+direction(topleft, 1, -1).
+direction(topright, 1, 1).
+direction(bottomleft,-1, -1).
+direction(bottomright, -1, 1).
 
 %
 %direction_pieces(_Board, Row, Col, Size, _Player, _Dir) :- (Row =< 0 ; Col =< 0 ; Row >= Size - 1 ; Col >= Size - 1), !, fail.
@@ -221,7 +227,42 @@ direction_pieces(Board, Row, Col, Size, Player, bottomright) :-
     ).
 
 line_of_sight(Board, Row, Col, Size, Player) :-
-    setof(Dir, (direction(Dir), direction_pieces(Board, Row, Col, Size, Player, Dir)), _Dirs).
+    setof(Dir, RowInc^ColInc^(direction(Dir, RowInc, ColInc), direction_pieces(Board, Row, Col, Size, Player, Dir)), _Dirs).
+
+get_avaliable_cells(_Board, Size, _Col, Size, _Dir, []).
+get_avaliable_cells(_Board, _Row, Size, Size, _Dir, []).
+get_avaliable_cells(_Board, Row, Col, _Size, _Dir, []) :- Row < 0 ; Col < 0.
+get_avaliable_cells(Board, Row, Col, Size, Dir, []) :-
+    direction(Dir, RowInc, ColInc),
+    NextRow is Row + RowInc,
+    NextCol is Col + ColInc,
+    \+ get_avaliable_cells_(Board, NextRow, NextCol, Cell).
+
+get_avaliable_cells(Board, Row, Col, Size, Dir, [Cell|Cells]) :-
+    direction(Dir, RowInc, ColInc),
+    NextRow is Row + RowInc,
+    NextCol is Col + ColInc,
+    get_avaliable_cells_(Board, NextRow, NextCol, Cell),
+    get_avaliable_cells(Board, NextRow, NextCol, Size, Dir, Cells).
+
+get_avaliable_cells_(Board, Row, Col, cell(Row, Col, empty)) :-
+    select(cell(Row, Col, empty), Board, _Res).
+/*
+get_avaliable_cells(Board, Row, Col, Size, top, [Cell|Cells]) :-
+    select(cell(Row, Col, Piece), Board, _Res),
+    ((Piece = empty)
+        -> Cell = cell(Row, Col, empty),
+            NextRow is Row + 1,
+            get_avaliable_cells(Board, NextRow, Col, Size, top, Cells)
+        ; Cells = [], !
+    ),
+    NextRow is Row + 1,
+    get_avaliable_cells(Board, NextRow, Col, Size, top, Cells).
+*/
+
+avaliable_cells(Board, Row, Col, Size, ListOfCells) :-
+    findall(Cells, (get_avaliable_cells(Board, Row, Col, Size, Dir, Cells)), ListOfListsCells),
+    mergelists(ListOfListsCells, ListOfCells).
 
 move(GameState, [t, AtRow, AtCol, ToRow, ToCol], NewGameState) :-
     GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
