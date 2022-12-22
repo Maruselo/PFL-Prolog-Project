@@ -120,148 +120,46 @@ direction(topright, 1, 1).
 direction(bottomleft,-1, -1).
 direction(bottomright, -1, 1).
 
-%
-%direction_pieces(_Board, Row, Col, Size, _Player, _Dir) :- (Row =< 0 ; Col =< 0 ; Row >= Size - 1 ; Col >= Size - 1), !, fail.
-direction_pieces(Board, Row, Col, Size, Player, top) :-
-    NextRow is Row + 1,
-    NextRow < Size,
-    select(cell(NextRow, Col, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, Col, Size, Player, top)
-      )
-    ).
+direction_pieces_(Board, Row, Col, _Player, 0) :- select(cell(Row, Col, t-_P), Board, _Res).
+direction_pieces_(Board, Row, Col, Player, 1) :- select(cell(Row, Col, h-Player), Board, _Res).
 
-direction_pieces(Board, Row, Col, Size, Player, bottom) :-
-    NextRow is Row - 1,
-    NextRow >= 0,
-    select(cell(NextRow, Col, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, Col, Size, Player, bottom)
-      )
-    ).
+direction_pieces(_Board, Size, _Col, Size, _Player, _Dir, 0).
+direction_pieces(_Board, _Row, Size, Size, _Player, _Dir, 0).
+direction_pieces(_Board, Row, Col, _Size, _Player, _Dir, 0) :- Row < 0 ; Col < 0.
 
-direction_pieces(Board, Row, Col, Size, Player, left) :-
-    NextCol is Col - 1,
-    NextCol >= 0,
-    select(cell(Row, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, Row, NextCol, Size, Player, left)
-      )
-    ).
+direction_pieces(Board, Row, Col, _Size, Player, Dir, HeadFlag) :- !,
+    direction(Dir, RowInc, ColInc),
+    NextRow is Row + RowInc, NextCol is Col + ColInc, 
+    direction_pieces_(Board, NextRow, NextCol, Player, HeadFlag).
 
-direction_pieces(Board, Row, Col, Size, Player, right) :-
-    NextCol is Col + 1,
-    NextCol < Size,
-    select(cell(Row, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, Row, NextCol, Size, Player, right)
-      )
-    ).
-
-direction_pieces(Board, Row, Col, Size, Player, topleft) :-
-    NextCol is Col - 1,
-    NextRow is Row + 1,
-    NextCol >= 0,
-    NextRow < Size,
-    select(cell(NextRow, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, topleft)
-      )
-    ).
-
-direction_pieces(Board, Row, Col, Size, Player, topright) :-
-    NextCol is Col + 1,
-    NextRow is Row + 1,
-    NextCol < Size,
-    NextRow < Size,
-    select(cell(NextRow, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, topright)
-      )
-    ).
-
-direction_pieces(Board, Row, Col, Size, Player, bottomleft) :-
-    NextCol is Col - 1,
-    NextRow is Row - 1,
-    NextCol >= 0,
-    NextRow >= 0,
-    select(cell(NextRow, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, bottomleft)
-      )
-    ).
-
-direction_pieces(Board, Row, Col, Size, Player, bottomright) :-
-    NextCol is Col + 1,
-    NextRow is Row - 1,
-    NextCol < Size,
-    NextRow >= 0,
-    select(cell(NextRow, NextCol, Piece), Board, _Res),
-    ((Piece = h-Player) 
-    -> ! 
-    ; ((Piece = t-_Player)
-        -> !, fail 
-        ; !, direction_pieces(Board, NextRow, NextCol, Size, Player, bottomright)
-      )
-    ).
+direction_pieces(Board, Row, Col, Size, Player, Dir, HeadFlag) :-
+    direction(Dir, RowInc, ColInc),
+    NextRow is Row + RowInc, NextCol is Col + ColInc, 
+    \+ direction_pieces_(Board, NextRow, NextCol, Player, HeadFlag),
+    direction_pieces(Board, NextRow, NextCol, Size, Player, Dir, HeadFlag).
 
 line_of_sight(Board, Row, Col, Size, Player) :-
-    setof(Dir, RowInc^ColInc^(direction(Dir, RowInc, ColInc), direction_pieces(Board, Row, Col, Size, Player, Dir)), _Dirs).
+    setof(HeadFlag, Dir^RowInc^ColInc^(direction(Dir, RowInc, ColInc), direction_pieces(Board, Row, Col, Size, Player, Dir, HeadFlag), HeadFlag = 1), _Flags).
+
+get_avaliable_cells_(Board, Row, Col, cell(Row, Col, empty)) :-
+    select(cell(Row, Col, empty), Board, _Res).
 
 get_avaliable_cells(_Board, Size, _Col, Size, _Dir, []).
 get_avaliable_cells(_Board, _Row, Size, Size, _Dir, []).
 get_avaliable_cells(_Board, Row, Col, _Size, _Dir, []) :- Row < 0 ; Col < 0.
-get_avaliable_cells(Board, Row, Col, Size, Dir, []) :-
+get_avaliable_cells(Board, Row, Col, _Size, Dir, []) :-
     direction(Dir, RowInc, ColInc),
-    NextRow is Row + RowInc,
-    NextCol is Col + ColInc,
-    \+ get_avaliable_cells_(Board, NextRow, NextCol, Cell).
+    NextRow is Row + RowInc, NextCol is Col + ColInc,
+    \+ get_avaliable_cells_(Board, NextRow, NextCol, _Cell).
 
 get_avaliable_cells(Board, Row, Col, Size, Dir, [Cell|Cells]) :-
     direction(Dir, RowInc, ColInc),
-    NextRow is Row + RowInc,
-    NextCol is Col + ColInc,
+    NextRow is Row + RowInc, NextCol is Col + ColInc,
     get_avaliable_cells_(Board, NextRow, NextCol, Cell),
     get_avaliable_cells(Board, NextRow, NextCol, Size, Dir, Cells).
 
-get_avaliable_cells_(Board, Row, Col, cell(Row, Col, empty)) :-
-    select(cell(Row, Col, empty), Board, _Res).
-/*
-get_avaliable_cells(Board, Row, Col, Size, top, [Cell|Cells]) :-
-    select(cell(Row, Col, Piece), Board, _Res),
-    ((Piece = empty)
-        -> Cell = cell(Row, Col, empty),
-            NextRow is Row + 1,
-            get_avaliable_cells(Board, NextRow, Col, Size, top, Cells)
-        ; Cells = [], !
-    ),
-    NextRow is Row + 1,
-    get_avaliable_cells(Board, NextRow, Col, Size, top, Cells).
-*/
-
 avaliable_cells(Board, Row, Col, Size, ListOfCells) :-
-    findall(Cells, (get_avaliable_cells(Board, Row, Col, Size, Dir, Cells)), ListOfListsCells),
+    findall(Cells, (get_avaliable_cells(Board, Row, Col, Size, _Dir, Cells)), ListOfListsCells),
     mergelists(ListOfListsCells, ListOfCells).
 
 move(GameState, [t, AtRow, AtCol, ToRow, ToCol], NewGameState) :-
@@ -278,12 +176,17 @@ move(GameState, [t, AtRow, AtCol, ToRow, ToCol], NewGameState) :-
 
     % check if no jumping is being performed
     %   check in the direction of the move if there is no piece in the way
+    avaliable_cells(ListOfCells, AtRow, AtCol, Size, AvailCells),
+    ((memberchk(cell(ToRow, ToCol, empty), AvailCells))
+        -> write('Moved') 
+        ; write('Invalid move: target cell isn\'t in reach'), fail
+    ),
 
     select(cell(AtRow, AtCol, t-Player), ListOfCells, cell(AtRow, AtCol, empty), TempListOfCells),
     select(cell(ToRow, ToCol, empty), TempListOfCells, cell(ToRow, ToCol, t-Player), NewListOfCells),
 
     NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
-
+/*
 move(GameState, [h, AtTopLeftRow, AtTopLeftCol, ToTopLeftRow, ToTopLeftCol], NewGameState) :-
     GameState = [board-ListOfCells, turnPlayer-Player, size-Size],
 
@@ -308,7 +211,7 @@ move(GameState, [h, AtTopLeftRow, AtTopLeftCol, ToTopLeftRow, ToTopLeftCol], New
     select(cell(ToBottomRightRow, ToBottomRightCol, empty), TempListOfCells7, cell(ToBottomRightRow, ToBottomRightCol, h-Player), NewListOfCells),
     
     NewGameState = [board-NewListOfCells, turnPlayer-Player, size-Size].
-
+*/
 valid_moves(GameState, Player, ListOfMoves) :-
     findall(Move, move(GameState, Move, NewState), ListOfMoves).
 
