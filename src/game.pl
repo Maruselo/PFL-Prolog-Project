@@ -47,26 +47,26 @@ initial_state_(Row, Size, Size, Board) :-
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (between(0, 1, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
     Row is 2, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
-    Cell = cell(Row, Col, t-1), !,
+    Cell = cell(Row, Col, t-2), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Lower is Size - 2, Upper is Size - 1, between(Lower, Upper, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
     Row is Size - 3, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
-    Cell = cell(Row, Col, t-2), !,
+    Cell = cell(Row, Col, t-1), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Row is 0; Row is 1), (Col is Size // 2; Col is Size // 2 - 1),
-    Cell = cell(Row, Col, h-1), !,
+    Cell = cell(Row, Col, h-2), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Row is Size - 1; Row is Size - 2), (Col is Size // 2; Col is Size // 2 - 1),
-    Cell = cell(Row, Col, h-2), !,
+    Cell = cell(Row, Col, h-1), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
@@ -86,18 +86,42 @@ menu_option(1, play).
 menu_option(2, instructions).
 menu_option(3, quit).
 
-% display_game(+GameState-Player)
-display_game(GameState-Player) :-
-    format('~t~1|~t~d~t~10+~t~d~t~10+~t~d~t~10+~t~d~t~10+~t~d~t~10+~t~d~t~10+~t~d~t~10+~t~d~t~10+~n', [0,1,2,3,4,5,6,7]),
-    format('~t~2|~`-t~9+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~9+~n', []),
-    (foreach(Row, GameState), count(RowNum, 0, _Max) do
-        nl, 
-        format('~d~t~1||', [RowNum]), 
-        format('~t~a~t~10||~t~a~t~10+|~t~a~t~10+|~t~a~t~10+|~t~a~t~10+|~t~a~t~10+|~t~a~t~10+|~t~a~t~10+|~n', Row), 
-        nl,
-        format('~t~2|~`-t~9+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~10+~`-t~9+~n', [])
+cellsize(5).
+
+piece_string(empty, '').
+piece_string(Piece-Player, [PieceCode, PlayerCode]) :- 
+    char_code(Piece, PieceCode), 
+    PlayerCode is 48 + Player.
+
+display_colnums(CellSize, BoardSize) :-
+    ColLimit is BoardSize - 1,
+    format('~t~2|', []),
+    (for(Col, 0, ColLimit), param(CellSize) do Tab is (Col + 1) * CellSize + 2, format('~t~t~d~t~*|', [Col, Tab])),
+    format('~n', []).
+
+display_cells([], _Size, _Player, RowSize, _RowNum) :- format('~t~2|~1+~`-t~*+~n', RowSize).
+display_cells(Board, Size, Player, RowSize, RowNum) :-
+    NextRowNum is RowNum - 1,
+    length(CellRow, Size),
+    append(CellRow, RemBoard, Board),
+    ((RowNum = Size) -> format('~t~2|~1+~`-t~*+~n', RowSize) ; format('~t~2||~1+~`-t~*+|~n', RowSize)),
+    (foreach(Cell, CellRow), for(Col, 1, Size), param(Size, NextRowNum) do 
+        arg(3, Cell, Piece), piece_string(Piece, String), 
+        ((Col = 1)
+        -> Tab is (Col * 5), format('~d~2||~t~s~t~*+|', [NextRowNum, String, Tab]) 
+        ; Tab is (Col * 5) + 2, format('~t~s~t~*||', [String, Tab]))
     ),
-    format('Next to move is: ~a.~n', [Player]).
+    ((RowNum = Size) -> format('~*|~t~d~2+~t~8+TURN PLAYER:  ~d~n', [RowSize, NextRowNum, Player]) ; format('~*|~t~d~2+~n', [RowSize, NextRowNum])),
+    display_cells(RemBoard, Size, Player, RowSize, NextRowNum).
+
+% display_game(+GameState)
+display_game(GameState) :-
+    GameState = [board-Board, turnPlayer-Player, size-Size],
+    cellsize(CellSize),
+    RowSize is (Size * CellSize) - 1,
+    display_colnums(CellSize, Size),
+    display_cells(Board, Size, Player, RowSize, Size),
+    display_colnums(CellSize, Size).
 
 % direction(Direction, RowInc, ColInc)
 direction(top, 1, 0).
