@@ -47,26 +47,26 @@ initial_state_(Row, Size, Size, Board) :-
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (between(0, 1, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
     Row is 2, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
-    Cell = cell(Row, Col, t-2), !,
+    Cell = cell(Row, Col, t-1), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Lower is Size - 2, Upper is Size - 1, between(Lower, Upper, Row), (Col is Size // 2 - 2; Col is Size // 2 + 1);
     Row is Size - 3, Lower is Size // 2 - 2, Upper is Size // 2 + 1, between(Lower, Upper, Col)),
-    Cell = cell(Row, Col, t-1), !,
+    Cell = cell(Row, Col, t-2), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Row is 0; Row is 1), (Col is Size // 2; Col is Size // 2 - 1),
-    Cell = cell(Row, Col, h-2), !,
+    Cell = cell(Row, Col, h-1), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
 initial_state_(Row, Col, Size, [Cell|Board]) :-
     (Row is Size - 1; Row is Size - 2), (Col is Size // 2; Col is Size // 2 - 1),
-    Cell = cell(Row, Col, h-1), !,
+    Cell = cell(Row, Col, h-2), !,
     NextCol is Col + 1,
     initial_state_(Row, NextCol, Size, Board).
 
@@ -120,7 +120,8 @@ display_game(GameState) :-
     cellsize(CellSize),
     RowSize is (Size * CellSize) - 1,
     display_colnums(CellSize, Size),
-    display_cells(Board, Size, Player, RowSize, Size),
+    reverse(Board, RevBoard),
+    display_cells(RevBoard, Size, Player, RowSize, Size),
     display_colnums(CellSize, Size).
 
 % direction(Direction, RowInc, ColInc)
@@ -164,29 +165,37 @@ increment_coordinates(Coords, RowInc, ColInc, NewCoords) :-
             NextRow is Row + RowInc, NextCol is Col + ColInc
     ).
 
-get_avaliable_cells_(Board, Coords, Cells) :-
+get_avaliable_cells_(Board, t-_Player, Coords, Cells) :-
     (foreach(Row-Col, Coords),
         foreach(Cell, Cells), param(Board) do
             memberchk(cell(Row, Col, empty), Board),
-            Cell = cell(Row, Col, empty)
+            Cell = Row-Col
     ).
 
-get_avaliable_cells(_Board, Coords, Size, _Dir, []) :-
+get_avaliable_cells_(Board, h-Player, Coords, Cells) :-
+    (foreach(Row-Col, Coords),
+        foreach(Cell, Cells), param(Board) do
+            (memberchk(cell(Row, Col, empty), Board);
+            memberchk(cell(Row, Col, h-Player), Board)),
+            Cell = Row-Col
+    ).
+
+get_avaliable_cells(_Board, _Piece, Coords, Size, _Dir, []) :-
     (foreach(Row-Col, Coords), param(Size) do Row < 0 ; Row >= Size ; Col < 0 ; Col >= Size).
 
-get_avaliable_cells(Board, Coords, _Size, Dir, []) :-
+get_avaliable_cells(Board, Piece, Coords, _Size, Dir, []) :-
     direction(Dir, RowInc, ColInc),
     increment_coordinates(Coords, RowInc, ColInc, NewCoords),
-    \+ get_avaliable_cells_(Board, NewCoords, _Cells).
+    \+ get_avaliable_cells_(Board, Piece, NewCoords, _Cells).
 
-get_avaliable_cells(Board, Coords, Size, Dir, [Cells|T]) :-
+get_avaliable_cells(Board, Piece, Coords, Size, Dir, [Cells|T]) :-
     direction(Dir, RowInc, ColInc),
     increment_coordinates(Coords, RowInc, ColInc, NewCoords),
-    get_avaliable_cells_(Board, NewCoords, Cells),
-    get_avaliable_cells(Board, NewCoords, Size, Dir, T).
+    get_avaliable_cells_(Board, Piece, NewCoords, Cells),
+    get_avaliable_cells(Board, Piece, NewCoords, Size, Dir, T).
 
-avaliable_cells(Board, Coords, Size, ListOfCells) :-
-    findall(Cells, (get_avaliable_cells(Board, Coords, Size, _Dir, CellList), mergelists(CellList, Cells)), ListOfListsCells),
+avaliable_cells(Board, Piece, Coords, Size, ListOfCells) :-
+    findall(Cells, (get_avaliable_cells(Board, Piece, Coords, Size, _Dir, Cells)), ListOfListsCells),
     mergelists(ListOfListsCells, ListOfCells).
 
 replace(NewBoard, _Piece, [], NewBoard).
@@ -219,16 +228,16 @@ move(GameState, Move, NewGameState) :-
 
 valid_moves(GameState, Player, ListOfMoves) :-
     GameState = [board-Board, _turnPlayer, size-Size],
-    findall([AtRow-AtCol, AvailCells], 
-        (select(cell(AtRow, AtCol, t-Player), Board, _Res), 
+    findall([AtRow-AtCol, AvailCells], (
+            select(cell(AtRow, AtCol, t-Player), Board, _Res), 
             line_of_sight(Board, AtRow-AtCol, Size, Player),
-            avaliable_cells(Board, [AtRow-AtCol], Size, AvailCells)
+            avaliable_cells(Board, t-Player, [AtRow-AtCol], Size, AvailCells)
         ),
         TentacleMoves
     ),
-    findall([HeadCoords, AvailCells], 
-        (findall(Row-Col, select(cell(Row, Col, h-Player), Board, _Res), HeadCoords),
-            avaliable_cells(Board, HeadCoords, Size, AvailCells)
+    findall([HeadCoords, AvailCells], (
+            findall(Row-Col, select(cell(Row, Col, h-Player), Board, _Res), HeadCoords),
+            avaliable_cells(Board, h-Player, HeadCoords, Size, AvailCells)
         ),
         HeadMoves
     ),
