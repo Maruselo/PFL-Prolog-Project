@@ -253,16 +253,62 @@ gameloop(GameState) :-
     congratulate(Winner).
 
 gameloop(GameState) :-
+    repeat,
+    write('Select type of pieace (Tentacle-t, Head-h):'), nl,
+    read(Piece),
+    (   Piece = 'h'
+    ->  write('Row:'), nl,
+        read(Row),
+        write('Col:'), nl,
+        read(Col),
+        write('New Row:'), nl,
+        read(NewRow),
+        write('New Col:'), nl,
+        read(NewCol)
+    ;   write('Top Row:'), nl,
+        read(TopRow),
+        write('Left Col:'), nl,
+        read(LeftCol),
+        DownRow is TopRow-1,
+        RightCol is LeftCol+1,
+        write('New Top Row:'), nl,
+        read(NewTopRow),
+        write('New Left Col:'), nl,
+        read(NewLeftCol),
+        NewDownRow is NewTopRow-1,
+        NewRightCol is NewLeftCol+1
+    ),
+    nl,
     choose_move(GameState, Player, Move),
     move(GameState, Move, NewGameState),
     next_player(Player, NextPlayer),
     display_game(GameState), !,
     gameloop(NewGameState).
 
+% size_option(+OptionNumber, -Option)
+size_option(1, 8).
+size_option(2, 10).
+
 play :-
-    initial_state(Size, GameState),
+    repeat,
+    write('Please select the size of your board (choose option number):'), nl,
+    write_size_list,
+    read(OptionNumber),
+    (   size_option(OptionNumber, OptionName)
+    ->  write('You selected: '), write(OptionName), nl, !
+    ;   write('Not a valid choice, try again...'), nl, fail
+    ),
+    nl,
+    initial_state(OptionName, GameState),
     display_game(GameState).
     gameloop(GameState).
+
+write_size_list :-
+    size_option(N, Name),
+    write(N), write('. '), write(Name), nl,
+    fail.
+    
+write_size_list.
 
 instructions :-
     write('Tako Judo - the timeless sport of octopus wrestling - is'), nl,
