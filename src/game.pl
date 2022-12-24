@@ -1,5 +1,6 @@
 :- use_module(library(between)).
 :- use_module(library(lists)).
+:- use_module(library(random)).
 
 % mergelists(+ListOfLists, ?List)
 mergelists([], []).
@@ -104,8 +105,9 @@ display_cells(Board, Size, Player, RowSize, RowNum) :-
     NextRowNum is RowNum - 1,
     length(CellRow, Size),
     append(CellRow, RemBoard, Board),
+    reverse(CellRow, InvCellRow),
     ((RowNum = Size) -> format('~t~2|~1+~`-t~*+~n', RowSize) ; format('~t~2||~1+~`-t~*+|~n', RowSize)),
-    (foreach(Cell, CellRow), for(Col, 1, Size), param(Size, NextRowNum) do 
+    (foreach(Cell, InvCellRow), for(Col, 1, Size), param(Size, NextRowNum) do 
         arg(3, Cell, Piece), piece_string(Piece, String), 
         ((Col = 1)
         -> Tab is (Col * 5), format('~d~2||~t~s~t~*+|', [NextRowNum, String, Tab]) 
@@ -136,14 +138,16 @@ direction(bottomright, -1, 1).
 
 direction_pieces_(Board, Row-Col, _Player, 0) :- memberchk(cell(Row, Col, t-_P), Board).
 direction_pieces_(Board, Row-Col, Player, 1) :- memberchk(cell(Row, Col, h-Player), Board).
+%direction_pieces_(Board, Row-Col, Player, _HeadFlag) :- memberchk(cell(Row, Col, empty), Board).
 
-direction_pieces(_Board, Size-_Col, Size, _Player, _Dir, 0).
-direction_pieces(_Board, _Row-Size, Size, _Player, _Dir, 0).
-direction_pieces(_Board, Row-Col, _Size, _Player, _Dir, 0) :- Row < 0 ; Col < 0.
+direction_pieces(_Board, Size-_Col, Size, _Player, _Dir, 0) :- !.
+direction_pieces(_Board, _Row-Size, Size, _Player, _Dir, 0) :- !.
+direction_pieces(_Board, Row-Col, _Size, _Player, _Dir, 0) :- (Row < 0 ; Col < 0), !.
 
-direction_pieces(Board, Row-Col, _Size, Player, Dir, HeadFlag) :- !,
+
+direction_pieces(Board, Row-Col, _Size, Player, Dir, HeadFlag) :-
     direction(Dir, RowInc, ColInc),
-    NextRow is Row + RowInc, NextCol is Col + ColInc, 
+    NextRow is Row + RowInc, NextCol is Col + ColInc,
     direction_pieces_(Board, NextRow-NextCol, Player, HeadFlag).
 
 direction_pieces(Board, Row-Col, Size, Player, Dir, HeadFlag) :-
@@ -210,6 +214,8 @@ place(Board, Piece, [Row-Col|Coords], NewBoard) :-
 
 % move(+GameState, +Move, -NewGameState)
 /*
+initial_state(8, GS), !, move(GS, [t, [0-2], [0-0]], NGS), display_game(NGS), NGS = [board-B, _, size-S], FGS = [board-B, turnPlayer-2, size-S, choose_move(FGS, 2-computer, 2, Move). 
+
  Move = [Piece, FromCoords, ToCoords]
         [t, [1-1], [2-3]]
         [h, [1-2,1-3,2-2,2-3], [2-2,2-3,2-4,2-5]] 
@@ -226,28 +232,97 @@ move(GameState, Move, NewGameState) :-
 
     NewGameState = [board-NewBoard, turnPlayer-Player, size-Size].
 
+construct_moves(Piece, FromCoords, ListToCoords, Moves) :-
+    (foreach(ToCoords, ListToCoords),
+        foreach(Move, Moves), param(Piece, FromCoords) do
+            Move = [Piece, FromCoords, ToCoords]
+    ).
+
+valid_tentacle_moves(Board, Player, Size, TentacleMoves) :-
+    findall(TentacleMoves, (
+            select(cell(Row, Col, t-Player), Board, _Res), 
+            line_of_sight(Board, Row-Col, Size, Player),
+            avaliable_cells(Board, t-Player, [Row-Col], Size, AvailCells),
+            dif(AvailCells, []),
+            construct_moves(t, [Row-Col], AvailCells, TentacleMoves)
+        ),
+        ListOfListsTentacleMoves
+    ),
+    mergelists(ListOfListsTentacleMoves, TentacleMoves).
+    
+valid_head_moves(Board, Player, Size, HeadMoves) :-
+    findall(HeadMoves, (
+            findall(Row-Col, select(cell(Row, Col, h-Player), Board, _Res), HeadCoords),
+            avaliable_cells(Board, h-Player, HeadCoords, Size, AvailCells),
+            dif(AvailCells, []),
+            construct_moves(h, HeadCoords, AvailCells, HeadMoves)
+        ),
+        ListOfListsHeadMoves
+    ),
+    mergelists(ListOfListsHeadMoves, HeadMoves).
+
 valid_moves(GameState, Player, ListOfMoves) :-
     GameState = [board-Board, _turnPlayer, size-Size],
-    findall([AtRow-AtCol, AvailCells], (
-            select(cell(AtRow, AtCol, t-Player), Board, _Res), 
-            line_of_sight(Board, AtRow-AtCol, Size, Player),
-            avaliable_cells(Board, t-Player, [AtRow-AtCol], Size, AvailCells)
-        ),
-        TentacleMoves
-    ),
-    findall([HeadCoords, AvailCells], (
-            findall(Row-Col, select(cell(Row, Col, h-Player), Board, _Res), HeadCoords),
-            avaliable_cells(Board, h-Player, HeadCoords, Size, AvailCells)
-        ),
-        HeadMoves
-    ),
-    append([t-TentacleMoves], [h-HeadMoves], ListOfMoves).
+    valid_tentacle_moves(Board, Player, Size, TentacleMoves),
+    valid_head_moves(Board, Player, Size, HeadMoves),
+    append(TentacleMoves, HeadMoves, ListOfMoves).
 
-choose_move(GameState, Player, Level, Move) :-
-    true.
+%choose_move(+GameState, +Player, +Level, -Move)
+choose_move(GameState, PlayerNum-computer, 1, Move) :-
+    valid_moves(GameState, PlayerNum, ListOfMoves),
+    %prolog_flag(debugging, _, trace),
+    random_select(Move, ListOfMoves, _Rest).
 
-value(GameState, Player, Value).
-  
+choose_move(GameState, PlayerNum-computer, 2, Move) :-
+    valid_moves(GameState, PlayerNum, ListOfMoves),
+    setof(Value-Mv, NewGameState^(
+            member(Mv, ListOfMoves),
+            move(GameState, Mv, NewGameState),
+            value(NewGameState, PlayerNum, Value)
+        ),
+        [Min-Mv|Moves]
+    ),
+    best_moves(Min, [Min-Mv|Moves], BestMoves),
+    random_select(Move, BestMoves, _Rest).
+
+% best_moves(+Moves, -BestMoves)
+best_moves(_Min, [], []).
+best_moves(Min, [Value-_Move|_Moves], []) :-
+	Min < Value,
+	!.
+	
+best_moves(Min, [Value-Move|Moves], [Move|BestMoves]) :-
+	Min >= Value,
+	best_moves(Min, Moves, BestMoves).
+
+value_(_Board, [], _Size, 0).
+value_(Board, [PlayerNum-Row-Col|Tentacles], Size, Value) :-
+    value_(Board, Tentacles, Size, Value),
+    line_of_sight(Board, Row-Col, Size, PlayerNum).
+
+value_(Board, [PlayerNum-Row-Col|Tentacles], Size, Value) :-
+    value_(Board, Tentacles, Size, Value1),
+    \+ line_of_sight(Board, Row-Col, Size, PlayerNum),
+    Value is Value1 + 1.
+
+value(GameState, Player, Value) :-
+    GameState = [board-Board, _turnPlayer, size-Size],
+    findall(PlayerNum-Row-Col, (select(cell(Row, Col, t-PlayerNum), Board, _Rem), PlayerNum =\= Player), EnemyTentacles),
+    findall(Player-Row-Col, (select(cell(Row, Col, t-Player), Board, _Rem)), PlayerTentacles),
+    value_(Board, EnemyTentacles, Size, Score1),
+    value_(Board, PlayerTentacles, Size, Score2),
+    valid_head_moves(Board, Player, Size, PlayerHeadMoves),
+    (foreach(HeadMove, PlayerHeadMoves),
+        count(I, 1, Score3) do
+            true
+    ),
+    valid_head_moves(Board, 2, Size, EnemyHeadMoves),
+    (foreach(HeadMove, EnemyHeadMoves),
+        count(I, 1, Score4) do
+            true
+    ),
+    Value is - Score1 + Score2 - Score3 + Score4.
+
 gameloop(GameState) :-
     game_over(GameState, Winner), !,
     congratulate(Winner).
