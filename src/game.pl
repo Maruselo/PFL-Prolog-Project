@@ -97,13 +97,7 @@ initial_state_(Row, Col, Size, [Cell|Board]) :-
 % initial_state(+Size, -GameState)
 initial_state(Size, GameState) :-
     initial_state_(0, 0, Size, Board),
-    GameState = [board-Board, turnPlayer-1, size-Size, _Players, _Levels, turnCounter-1].
-
-
-% menu_option(+OptionNumber, -Option)
-menu_option(1, start).
-menu_option(2, instructions).
-menu_option(3, quit).
+    GameState = [board-Board, turnPlayer-1, size-Size, turnCounter-1, moveLog-[]].
 
 cellsize(5).
 player_amount(2).
@@ -119,8 +113,8 @@ display_colnums(CellSize, BoardSize) :-
     (for(Col, 0, ColLimit), param(CellSize) do Tab is (Col + 1) * CellSize + 2, format('~t~t~d~t~*|', [Col, Tab])),
     format('~n', []).
 
-display_cells([], _Size, _Player, RowSize, _RowNum, _CellSize) :- format('~t~2|~1+~`-t~*+~n', RowSize).
-display_cells(Board, Size, Player, RowSize, RowNum, CellSize) :-
+display_board([], _Size, _Player, _TurnCounter, RowSize, _RowNum, _CellSize) :- format('~t~2|~1+~`-t~*+~n', RowSize).
+display_board(Board, Size, Player, TurnCounter, RowSize, RowNum, CellSize) :-
     NextRowNum is RowNum - 1,
     length(CellRow, Size),
     append(CellRow, RemBoard, Board),
@@ -132,18 +126,19 @@ display_cells(Board, Size, Player, RowSize, RowNum, CellSize) :-
         -> Tab is (Col * CellSize), format('~d~2||~t~s~t~*+|', [NextRowNum, String, Tab]) 
         ; Tab is (Col * CellSize) + 2, format('~t~s~t~*||', [String, Tab]))
     ),
-    ((RowNum = Size) -> format('~*|~t~d~2+~t~8+TURN PLAYER:  ~d~n', [RowSize, NextRowNum, Player]) ; format('~*|~t~d~2+~n', [RowSize, NextRowNum])),
-    display_cells(RemBoard, Size, Player, RowSize, NextRowNum, CellSize).
+    ((RowNum = Size) -> format('~*|~t~d~2+~t~8+TURN PLAYER:   ~d~n', [RowSize, NextRowNum, Player]) ;
+        ((RowNum is Size - 1) -> format('~*|~t~d~2+~t~8+TURN COUNTER:  ~d~n', [RowSize, NextRowNum, TurnCounter]) ; format('~*|~t~d~2+~n', [RowSize, NextRowNum]))),
+    display_board(RemBoard, Size, Player, TurnCounter, RowSize, NextRowNum, CellSize).
 
 % display_game(+GameState)
 display_game(GameState) :-
-    GameState = [board-Board, turnPlayer-PlayerNum, size-Size|_],
+    GameState = [board-Board, turnPlayer-PlayerNum, size-Size, turnCounter-TurnCounter|_],
     cellsize(CellSize),
     RowSize is (Size * CellSize) - 1,
     display_colnums(CellSize, Size),
     reverse(Board, RevBoard),
-    display_cells(RevBoard, Size, PlayerNum, RowSize, Size, CellSize),
-    display_colnums(CellSize, Size).
+    display_board(RevBoard, Size, PlayerNum, TurnCounter, RowSize, Size, CellSize),
+    display_colnums(CellSize, Size), nl.
 
 % direction(Direction, RowInc, ColInc)
 direction(top, 1, 0).
@@ -239,9 +234,10 @@ initial_state(8, GS), !, move(GS, [t, [0-2], [0-0]], NGS), display_game(NGS), NG
         [h, [1-2,1-3,2-2,2-3], [2-2,2-3,2-4,2-5]] 
 */
 move(GameState, Move, NewGameState) :-
-    GameState = [board-Board, turnPlayer-Player, size-Size, Players, Levels|_],
+    GameState = [board-Board, turnPlayer-Player, size-Size, _turnCounter, moveLog-MoveLog],
     Move = [Piece, FromCoords, ToCoords],
 
+    % Move verification
     valid_moves(GameState, Player, ListOfMoves),
     memberchk(Move, ListOfMoves),
 
@@ -251,7 +247,7 @@ move(GameState, Move, NewGameState) :-
     % Place pieces in target empty cells
     place(TempBoard, Piece-Player, ToCoords, NewBoard),
 
-    NewGameState = [board-NewBoard, turnPlayer-_Player, size-Size, Players, Levels, turnCounter-_Counter].
+    NewGameState = [board-NewBoard, turnPlayer-_Player, size-Size, turnCounter-_Counter, moveLog-MoveLog].
 
 construct_moves(Piece, FromCoords, ListToCoords, Moves) :-
     (foreach(ToCoords, ListToCoords),
@@ -311,6 +307,7 @@ choose_move(GameState, PlayerNum-computer, 2, Move) :-
         ),
         [Min-Mv|Moves]
     ),
+    write([Min-Mv|Moves]), nl,
     best_moves(Min, [Min-Mv|Moves], BestMoves),
     random_select(Move, BestMoves, _Rest).
 
@@ -338,77 +335,53 @@ value(GameState, Player, Value) :-
     GameState = [board-Board, _turnPlayer, size-Size|_],
     findall(PlayerNum-Row-Col, (select(cell(Row, Col, t-PlayerNum), Board, _Rem), PlayerNum =\= Player), EnemyTentacles),
     findall(Player-Row-Col, (select(cell(Row, Col, t-Player), Board, _Rem)), PlayerTentacles),
-    eval_tentacles(Board, EnemyTentacles, Size, Score1),
-    eval_tentacles(Board, PlayerTentacles, Size, Score2),
+    eval_tentacles(Board, EnemyTentacles, Size, EnemyTentVal),
+    eval_tentacles(Board, PlayerTentacles, Size, PlayerTentVal),
     valid_head_moves(Board, Player, Size, PlayerHeadMoves),
     (foreach(HeadMove, PlayerHeadMoves),
-        count(I, 1, Score3) do
+        count(I, 1, PlayerHeadVal) do
             true
     ),
-    valid_head_moves(Board, 2, Size, EnemyHeadMoves),
+    next_player(Player, NextPlayer),
+    valid_head_moves(Board, NextPlayer, Size, EnemyHeadMoves),
     (foreach(HeadMove, EnemyHeadMoves),
-        count(I, 1, Score4) do
+        count(I, 1, EnemyHeadVal) do
             true
     ),
-    Value is - Score1 + Score2 - Score3 + Score4.
+    Value is - 0.8 * EnemyTentVal + PlayerTentVal - PlayerHeadVal + EnemyHeadVal.
 
 game_over(GameState, Winner) :-
-    GameState = [board-Board, turnPlayer-Player, size-Size, _Players , _Levels, turnCounter-TurnCounter],
-    TurnCounter =\= 1,
-    (valid_head_moves(Board, Player, Size, []); valid_tentacle_moves(GameState, Player, Size, [])),
+    GameState = [board-Board, turnPlayer-Player, size-Size, turnCounter-TurnCounter, moveLog-MoveLog],
+    valid_moves(GameState, Player, []),
+    %TurnCounter =\= 1,
+    %(valid_head_moves(Board, Player, Size, []); valid_tentacle_moves(GameState, Player, Size, [])),
     next_player(Player, Winner).
+
+congratulate(Winner) :-
+    format('No more moves can be played. Player ~d wins!~n', [Winner]).
 
 next_player(Player, NextPlayer) :-
     player_amount(Amount),
     NextPlayer is 1 + (Player mod Amount).
 
-gameloop(GameState) :-
+gameloop(GameState, _Players, _Levels) :-
     game_over(GameState, Winner), !,
     congratulate(Winner).
 
-gameloop(GameState) :-
+gameloop(GameState, Players, Levels) :-
     repeat,
-    /*write('Select type of pieace (Tentacle-t, Head-h):'), nl,
-    read(Piece),
-    (   Piece = 'h'
-    ->  write('Row:'), nl,
-        read(Row),
-        write('Col:'), nl,
-        read(Col),
-        write('New Row:'), nl,
-        read(NewRow),
-        write('New Col:'), nl,
-        read(NewCol)
-    ;   write('Top Row:'), nl,
-        read(TopRow),
-        write('Left Col:'), nl,
-        read(LeftCol),
-        DownRow is TopRow-1,
-        RightCol is LeftCol+1,
-        write('New Top Row:'), nl,
-        read(NewTopRow),
-        write('New Left Col:'), nl,
-        read(NewLeftCol),
-        NewDownRow is NewTopRow-1,
-        NewRightCol is NewLeftCol+1
-    ),
-    nl,*/
         display_game(GameState),
-        GameState = [_Board, turnPlayer-Player, _Size, players-Players, pc_levels-Levels, turnCounter-TurnCounter],
+        GameState = [_Board, turnPlayer-Player, _Size, turnCounter-TurnCounter|_],
         member(Player-Type, Players),
         (Type = computer -> member(Player-Level, Levels) ; true),
         choose_move(GameState, Player-Type, Level, Move),
+        %prolog_flag(debugging, _, trace),
         move(GameState, Move, NewGameState),
         next_player(Player, NextPlayer),
         NextTurnCounter is TurnCounter + 1,
-        prolog_flag(debugging, _, trace),
-        NewGameState = [_, turnPlayer-NextPlayer, _Size, _Players, _Levels, turnCounter-NextTurnCounter],
+        NewGameState = [_NewBoard, turnPlayer-NextPlayer, _Size, turnCounter-NextTurnCounter|_],
         !,
-        gameloop(NewGameState).
-
-% size_option(+OptionNumber, -Option)
-size_option(1, 8).
-size_option(2, 10).
+        gameloop(NewGameState, Players, Levels).
 
 play :-
     repeat,
@@ -433,8 +406,8 @@ start :-
     pc_level_menu(Players, PCLevels),
     % start game loop
     initial_state(BoardSize, GameState),
-    GameState = [_Board, _TurnPlayer, _Size, players-Players, pc_levels-PCLevels, _turnCounter], !,
-    gameloop(GameState).
+    !,
+    gameloop(GameState, Players, PCLevels).
 
 board_sizes([8, 10]).
 pc_levels([1, 2]).
@@ -482,27 +455,6 @@ pc_level_menu(Players, PCLevels) :-
                 read_number(Level),
                 (memberchk(Level, Levels) -> !, PCLevel = PCPlayer-Level ; write('Invalid level.'), nl, fail)
     ) ; PCLevels = [].
-/*
-play :-
-    repeat,
-    write('Please select the size of your board (choose option number):'), nl,
-    write_size_list,
-    read_number(OptionNumber), skip_line,
-    (   size_option(OptionNumber, OptionName)
-    ->  write('You selected: '), write(OptionName), nl, !
-    ;   write('Not a valid choice, try again...'), nl, fail
-    ),
-    nl,
-    initial_state(OptionName, GameState),
-    gameloop(GameState).
-*/
-
-write_size_list :-
-    size_option(N, Name),
-    write(N), write('. '), write(Name), nl,
-    fail.
-    
-write_size_list.
 
 instructions :-
     write('Tako Judo - the timeless sport of octopus wrestling - is'), nl,
@@ -522,31 +474,3 @@ instructions :-
     write('harmlessly move a tentacle back and forth between a couple'), nl,
     write('of squares) is pinned and eliminated from the game. Last'), nl,
     write('octopus to move freely controls the sea and wins the game.'), nl.
-
-/*
-quit :-
-    nl.
-*/
-
-menu :-
-    repeat,
-    nl,
-    write('Please select a number:'), nl,
-    write_menu_list,
-    read_string(Input), skip_line,
-    atom_codes(OptionName, Input),
-    /*read(OptionNumber),
-    (   menu_option(OptionNumber, OptionName)
-    ->  write('You selected: '), write(OptionName), nl, !
-    ;   write('Not a valid choice, try again...'), nl, fail
-    ),
-    nl,*/
-    call(OptionName).
-
-
-write_menu_list :-
-    menu_option(N, Name),
-    write(N), write('. '), write(Name), nl,
-    fail.
-    
-write_menu_list.
