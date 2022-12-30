@@ -75,6 +75,8 @@ read_string_([Input|X]) :-
 	get_code(Input),
 	read_string_(X).
 
+
+/* Game functions */
 % initial_state(+Size, -GameState)
 % Takes the size of the board as input, outputs the term GameState containing information about the game such as:
 % the initial state of the board, size of the board, player to move and turn counter.
@@ -128,7 +130,6 @@ initial_state_(Row, Col, Size, [Cell|Board]) :-
 
 
 cellsize(5).    % Defines the size of a cell in the board's display
-player_amount(2).
 
 % piece_string(+Piece, -String) - Takes a player piece in term representation and converts it into its string representation
 piece_string(empty, '').
@@ -193,7 +194,6 @@ seek_head(_Board, Size-_Col, Size, _Player, _Dir, 0) :- !.
 seek_head(_Board, _Row-Size, Size, _Player, _Dir, 0) :- !.
 seek_head(_Board, Row-Col, _Size, _Player, _Dir, 0) :- (Row < 0 ; Col < 0), !.
 
-
 seek_head(Board, Row-Col, _Size, Player, Dir, HeadFlag) :-
     direction(Dir, RowInc, ColInc),
     NextRow is Row + RowInc, NextCol is Col + ColInc,
@@ -205,10 +205,6 @@ seek_head(Board, Row-Col, Size, Player, Dir, HeadFlag) :-
     \+ seek_head_(Board, NextRow-NextCol, Player, HeadFlag),
     seek_head(Board, NextRow-NextCol, Size, Player, Dir, HeadFlag).
 
-% check if head is in line of sight
-    %   check each direction
-    %       change to new direction if tentacle is found or all cells are empty
-    %       succeed if head is found in any direction
 % head_in_sight(+Board, +Row-Col, +Size, +Player)
 % Predicate that checks if the player's head is in sight from the given coordinates in Row-Col
 head_in_sight(Board, Row-Col, Size, Player) :-
@@ -277,14 +273,6 @@ place(Board, Piece, [Row-Col|Coords], NewBoard) :-
     select(cell(Row, Col, empty), Board, cell(Row, Col, Piece), TempBoard),
     place(TempBoard, Piece, Coords, NewBoard).
 
-% move(+GameState, +Move, -NewGameState)
-/*
-initial_state(8, GS), !, move(GS, [t, [0-2], [0-0]], NGS), display_game(NGS), NGS = [board-B, _, size-S], FGS = [board-B, turnPlayer-2, size-S, choose_move(FGS, 2-computer, 2, Move). 
-
- Move = [Piece, FromCoords, ToCoords]
-        [t, [1-1], [2-3]]
-        [h, [1-2,1-3,2-2,2-3], [2-2,2-3,2-4,2-5]] 
-*/
 % move(+GameState, +Move, -NewGameState)
 % Validates and executes a move Move in the current gamestate GameState, returning a new gamestate
 move(GameState, Move, NewGameState) :-
@@ -359,6 +347,9 @@ valid_moves(GameState, Player, ListOfMoves) :-
 choose_move(GameState, PlayerNum-human, _Level, Move) :-
     repeat,
         format('Player ~d to move:~n', [PlayerNum]),
+        write('Move syntax:'), nl,
+        write('- piece tentacle from <current-coordinates> to <target-coordinates>.'), nl,
+        write('- piece head to [<target-coordinates>]'), nl,
         read(Input),
         (call(Input, GameState, Move)
             -> !
@@ -459,9 +450,8 @@ gameloop(GameState, Players, Levels) :-
         display_game(GameState),
         GameState = [_Board, turnPlayer-Player, _Size, turnCounter-TurnCounter|_],
         member(Player-Type, Players),
-        (Type = computer -> member(Player-Level, Levels) ; true),
+        (Type = computer -> member(Player-Level, Levels) ; true), 
         choose_move(GameState, Player-Type, Level, Move),
-        %prolog_flag(debugging, _, trace),
         move(GameState, Move, NewGameState),
         next_player(Player, NextPlayer),
         NextTurnCounter is TurnCounter + 1,
@@ -502,6 +492,7 @@ start :-
 % Game values
 board_sizes([8, 10]).
 pc_levels([1, 2]).
+player_amount(2).
 player_configs(["H/H", "H/PC", "PC/H", "PC/PC"]).
 player_config("H/H", [1-human, 2-human]).
 player_config("H/PC", [1-human, 2-computer]).
@@ -539,7 +530,6 @@ player_config_menu(Players) :-
 % pc_level_menu(+Players, -PCLevels)
 % Checks if there's any AI in the player configuration Players,
 % prompting the user to select its level if an AI player is found
-
 pc_level_menu(Players, PCLevels) :-
     pc_levels(Levels),
     findall(PlayerNum, member(PlayerNum-computer, Players), PCPlayers),
